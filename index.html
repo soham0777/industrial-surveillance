@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Industrial Surveillance using ESP32-S3 CAM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Poppins', 'sans-serif'],
+        serif: ['Playfair Display', 'serif'],
+      },
+      colors: {
+        neon: '#00FFAA',
+        cyan: '#00BFFF',
+        dark: { 900: '#060a13', 800: '#0a0e17', 700: '#0f1520', 600: '#141c2b', 500: '#1a2436' }
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { overflow: hidden; height: 100%; font-family: 'Poppins', sans-serif; background: #060a13; }
+
+  .slide {
+    position: absolute; inset: 0;
+    opacity: 0; visibility: hidden;
+    transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.6s;
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .slide::-webkit-scrollbar { display: none; }
+  .slide.active { opacity: 1; visibility: visible; }
+  .slide-inner { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: scale(1); } }
+  @keyframes neonPulse { 0%, 100% { box-shadow: 0 0 5px rgba(0,255,170,0.3), 0 0 20px rgba(0,255,170,0.1); } 50% { box-shadow: 0 0 15px rgba(0,255,170,0.5), 0 0 40px rgba(0,255,170,0.2); } }
+  @keyframes redPulse { 0%, 100% { box-shadow: 0 0 5px rgba(255,60,60,0.3); } 50% { box-shadow: 0 0 20px rgba(255,60,60,0.5), 0 0 40px rgba(255,60,60,0.15); } }
+  @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+  @keyframes scanLine { 0% { top: 0%; } 100% { top: 100%; } }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes glowText { 0%, 100% { text-shadow: 0 0 10px rgba(0,255,170,0.3); } 50% { text-shadow: 0 0 25px rgba(0,255,170,0.6), 0 0 50px rgba(0,255,170,0.2); } }
+  @keyframes borderGlow { 0%, 100% { border-color: rgba(0,255,170,0.15); } 50% { border-color: rgba(0,255,170,0.4); } }
+  @keyframes gridScroll { 0% { background-position: 0 0; } 100% { background-position: 0 4rem; } }
+
+  .slide.active .anim-fade-up { animation: fadeUp 0.8s ease-out both; }
+  .slide.active .anim-fade-in { animation: fadeIn 0.8s ease-out both; }
+  .slide.active .anim-slide-left { animation: slideInLeft 0.8s ease-out both; }
+  .slide.active .anim-slide-right { animation: slideInRight 0.8s ease-out both; }
+  .slide.active .anim-scale { animation: scaleIn 0.6s ease-out both; }
+  .slide.active .delay-1 { animation-delay: 0.1s; }
+  .slide.active .delay-2 { animation-delay: 0.2s; }
+  .slide.active .delay-3 { animation-delay: 0.3s; }
+  .slide.active .delay-4 { animation-delay: 0.4s; }
+  .slide.active .delay-5 { animation-delay: 0.5s; }
+  .slide.active .delay-6 { animation-delay: 0.6s; }
+  .slide.active .delay-7 { animation-delay: 0.7s; }
+  .slide.active .delay-8 { animation-delay: 0.8s; }
+  .slide.active .delay-9 { animation-delay: 0.9s; }
+  .slide.active .delay-10 { animation-delay: 1.0s; }
+
+  .glass-card {
+    background: rgba(15, 21, 32, 0.7);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(0, 255, 170, 0.08);
+    border-radius: 1rem;
+  }
+  .glass-card-light {
+    background: rgba(20, 28, 43, 0.5);
+    border: 1px solid rgba(0, 255, 170, 0.06);
+    border-radius: 0.875rem;
+    transition: all 0.3s ease;
+  }
+  .glass-card-light:hover {
+    border-color: rgba(0, 255, 170, 0.2);
+    background: rgba(20, 28, 43, 0.7);
+  }
+
+  .neon-heading {
+    color: #00FFAA;
+    text-shadow: 0 0 15px rgba(0,255,170,0.15);
+  }
+  .cyan-heading {
+    color: #00BFFF;
+    text-shadow: 0 0 15px rgba(0,191,255,0.15);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(0,255,170,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,170,0.03) 1px, transparent 1px);
+    background-size: 4rem 4rem;
+    animation: gridScroll 20s linear infinite;
+  }
+
+  .nav-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(0, 255, 170, 0.15);
+    transition: all 0.4s ease; cursor: pointer;
+  }
+  .nav-dot:hover { background: rgba(0, 255, 170, 0.4); }
+  .nav-dot.active { background: #00FFAA; width: 28px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,255,170,0.3); }
+
+  .toc-item {
+    padding: 0.65rem 1rem; border-radius: 0.625rem;
+    transition: all 0.3s ease; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .toc-item:hover { background: rgba(0,255,170,0.04); border-color: rgba(0,255,170,0.1); transform: translateX(6px); }
+  .toc-item.current { background: rgba(0,255,170,0.08); border-color: rgba(0,255,170,0.25); }
+
+  .data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+  .data-table th {
+    background: rgba(0,255,170,0.08); color: #00FFAA;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 0.6rem 0.85rem; text-align: left;
+  }
+  .data-table th:first-child { border-radius: 0.625rem 0 0 0; }
+  .data-table th:last-child { border-radius: 0 0.625rem 0 0; }
+  .data-table td { padding: 0.55rem 0.85rem; font-size: 0.78rem; color: #c8d0dc; border-bottom: 1px solid rgba(0,255,170,0.04); }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: rgba(0,255,170,0.02); }
+
+  .sensor-card {
+    background: rgba(15, 21, 32, 0.6); border: 1px solid rgba(0,255,170,0.06);
+    border-radius: 0.875rem; padding: 0.85rem; text-align: center;
+    transition: all 0.3s ease;
+  }
+  .sensor-card:hover { border-color: rgba(0,255,170,0.2); transform: translateY(-2px); }
+  .sensor-card.alert-active { animation: redPulse 1.5s infinite; border-color: rgba(255,60,60,0.5); background: rgba(255,30,30,0.06); }
+
+  .block-node {
+    background: rgba(15, 21, 32, 0.7); border: 1px solid rgba(0,255,170,0.1);
+    border-radius: 0.625rem; padding: 0.4rem 0.85rem;
+    font-size: 0.7rem; text-align: center; color: #c8d0dc;
+    transition: all 0.3s ease;
+  }
+  .block-node:hover { border-color: #00FFAA; background: rgba(0,255,170,0.05); transform: scale(1.05); }
+  .block-node.central {
+    border-color: #00FFAA; background: rgba(0,255,170,0.08);
+    color: #00FFAA; font-weight: 600; font-size: 0.8rem;
+    padding: 0.65rem 1.25rem; animation: neonPulse 3s infinite;
+  }
+
+  .corner-accent { position: absolute; width: 50px; height: 50px; pointer-events: none; }
+  .corner-accent.tl { top: 1.25rem; left: 1.25rem; border-top: 2px solid rgba(0,255,170,0.2); border-left: 2px solid rgba(0,255,170,0.2); }
+  .corner-accent.tr { top: 1.25rem; right: 1.25rem; border-top: 2px solid rgba(0,255,170,0.2); border-right: 2px solid rgba(0,255,170,0.2); }
+  .corner-accent.bl { bottom: 4rem; left: 1.25rem; border-bottom: 2px solid rgba(0,255,170,0.2); border-left: 2px solid rgba(0,255,170,0.2); }
+  .corner-accent.br { bottom: 4rem; right: 1.25rem; border-bottom: 2px solid rgba(0,255,170,0.2); border-right: 2px solid rgba(0,255,170,0.2); }
+
+  .mock-video { background: #060a13; border-radius: 0.75rem; position: relative; overflow: hidden; border: 1px solid rgba(0,255,170,0.08); }
+  .mock-video::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: rgba(0,255,170,0.3); animation: scanLine 3s linear infinite; }
+  .mock-video .rec-dot { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; background: #ff3c3c; border-radius: 50%; animation: blink 1.2s infinite; }
+  .mock-video .cam-label { position: absolute; bottom: 8px; left: 10px; font-size: 9px; color: rgba(0,255,170,0.5); letter-spacing: 0.05em; font-family: 'Poppins'; }
+
+  .footer-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(6, 10, 19, 0.9); backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(0,255,170,0.06);
+    padding: 0.65rem 1.5rem; display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid rgba(0,255,170,0.15); background: rgba(0,255,170,0.03);
+    color: rgba(0,255,170,0.5); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.3s ease;
+  }
+  .nav-btn:hover { border-color: rgba(0,255,170,0.4); color: #00FFAA; background: rgba(0,255,170,0.08); }
+  .progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, #00FFAA, #00BFFF); z-index: 200; transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1); border-radius: 0 2px 2px 0; box-shadow: 0 0 10px rgba(0,255,170,0.3); }
+
+  .ref-item { padding: 0.35rem 0; font-size: 0.68rem; color: #8090a8; line-height: 1.55; border-bottom: 1px solid rgba(0,255,170,0.03); }
+  .ref-item:last-child { border-bottom: none; }
+  .ref-item .ref-num { color: #00FFAA; font-weight: 600; margin-right: 0.4rem; }
+
+  .neon-badge {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.35rem 0.75rem; border-radius: 9999px; font-size: 0.68rem; font-weight: 500;
+    border: 1px solid; transition: all 0.3s ease;
+  }
+  .neon-badge:hover { transform: translateY(-1px); }
+
+  .step-pill {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.3rem 0.7rem; border-radius: 9999px; font-size: 0.65rem;
+    background: rgba(15,21,32,0.8); color: #c8d0cc; border: 1px solid rgba(0,255,170,0.06);
+  }
+
+  @media (max-width: 768px) {
+    .footer-bar { padding: 0.5rem 1rem; }
+  }
+</style>
+</head>
+<body class="grid-bg">
+
+<div class="progress-bar" id="progressBar" style="width: 7.69%"></div>
+
+<!-- ==================== SLIDE 1: TITLE ==================== -->
+<div class="slide active" data-slide="0">
+  <div class="corner-accent tl"></div>
+  <div class="corner-accent tr"></div>
+  <div class="corner-accent bl"></div>
+  <div class="corner-accent br"></div>
+
+  <div class="slide-inner px-6 md:px-16 text-center relative">
+    <div class="absolute top-5 right-6 anim-fade-in delay-1">
+      <div class="w-14 h-14 rounded-xl border border-[rgba(0,255,170,0.15)] bg-[rgba(0,255,170,0.03)] flex items-center justify-center">
+        <iconify-icon icon="mdi:school" width="26" style="color:#00FFAA; opacity:0.6"></iconify-icon>
+      </div>
+    </div>
+
+    <div class="absolute bottom-20 left-6 anim-fade-in delay-8">
+      <iconify-icon icon="mdi:cctv" width="32" style="color:rgba(0,255,170,0.15)"></iconify-icon>
+    </div>
+
+    <div class="anim-scale delay-1 mb-5">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl border border-[rgba(0,255,170,0.2)] bg-[rgba(0,255,170,0.04)]" style="animation: neonPulse 3s infinite;">
+        <iconify-icon icon="mdi:chip" width="40" style="color:#00FFAA"></iconify-icon>
+      </div>
+    </div>
+
+    <p class="anim-fade-up delay-2 text-[10px] font-semibold tracking-[0.25em] uppercase neon-heading mb-4">Community Engagement Project</p>
+
+    <h1 class="anim-fade-up delay-3 font-serif text-4xl sm:text-5xl md:text-6xl lg:text-7xl text-white leading-[0.95] tracking-[-0.03em] mb-4">
+      Smart Industrial<br>
+      <span class="italic font-normal neon-heading" style="animation: glowText 4s ease-in-out infinite;">Surveillance</span>
+    </h1>
+    <p class="anim-fade-up delay-4 text-base md:text-lg text-[#00BFFF] font-light mb-2">using ESP32-S3 CAM</p>
+
+    <p class="anim-fade-up delay-4 text-sm text-[#8090a8] font-light tracking-wide mb-8">
+      <span class="text-[#00FFAA]">360° Vision</span>
+      <span class="mx-2 text-[rgba(0,255,170,0.2)]">—</span>
+      <span class="text-[#00BFFF]">Real-Time Sensors</span>
+      <span class="mx-2 text-[rgba(0,255,170,0.2)]">—</span>
+      <span class="text-[#00FFAA]">Remote Control</span>
+    </p>
+
+    <div class="anim-fade-up delay-5 glass-card inline-block px-7 py-4 mb-6" style="animation: borderGlow 4s ease-in-out infinite;">
+      <p class="text-[#F0F0F0] font-medium text-sm mb-0.5">Soham Prabhakar Kadu</p>
+      <p class="text-[#607080] text-xs tracking-wide">PRN: 2124UMLM1042</p>
+    </div>
+
+    <div class="anim-fade-up delay-6 space-y-1.5 mb-8">
+      <p class="text-[#8090a8] text-xs">
+        <span class="text-[#607080]">Guided By:</span>
+        <span class="text-[#F0F0F0] font-medium"> Dr. Devyani Jadhav</span>
+        <span class="text-[#2a3545] mx-1.5">|</span>
+        <span class="text-[#607080]">Head, CSE AIML</span>
+      </p>
+      <p class="text-[#8090a8] text-xs">
+        <span class="text-[#F0F0F0] font-medium ml-[82px] md:ml-[106px]">Dr. Monika Arya</span>
+        <span class="text-[#2a3545] mx-1.5">|</span>
+        <span class="text-[#607080]">CSE AIML</span>
+      </p>
+    </div>
+
+    <div class="anim-fade-up delay-7 flex flex-wrap items-center justify-center gap-2.5 text-[10px] text-[#506070]">
+      <span class="flex items-center gap-1"><iconify-icon icon="mdi:map-marker" width="12" style="color:rgba(0,255,170,0.4)"></iconify-icon>Sanjivani University, Kopargaon</span>
+      <span>•</span><span>Dept. of AIML</span><span>•</span><span>Maharashtra</span><span>•</span><span>AY: 2025-26</span>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 2: TOC ==================== -->
+<div class="slide" data-slide="1">
+  <div class="slide-inner px-6 md:px-16 lg:px-24">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">Overview</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-8">Table of Contents</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-w-3xl">
+      <div class="toc-item anim-slide-left delay-2" onclick="goToSlide(2)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">01</span><span class="text-[#c8d0dc] text-xs">Introduction</span></div></div>
+      <div class="toc-item anim-slide-right delay-2" onclick="goToSlide(3)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">02</span><span class="text-[#c8d0dc] text-xs">Problem Statement</span></div></div>
+      <div class="toc-item anim-slide-left delay-3" onclick="goToSlide(4)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">03</span><span class="text-[#c8d0dc] text-xs">Objectives</span></div></div>
+      <div class="toc-item anim-slide-right delay-3" onclick="goToSlide(5)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">04</span><span class="text-[#c8d0dc] text-xs">Literature Review</span></div></div>
+      <div class="toc-item anim-slide-left delay-4" onclick="goToSlide(6)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">05</span><span class="text-[#c8d0dc] text-xs">Proposed System / Methodology</span></div></div>
+      <div class="toc-item anim-slide-right delay-4" onclick="goToSlide(7)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">06</span><span class="text-[#c8d0dc] text-xs">System Requirements</span></div></div>
+      <div class="toc-item anim-slide-left delay-5" onclick="goToSlide(8)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">07</span><span class="text-[#c8d0dc] text-xs">Implementation & Results</span></div></div>
+      <div class="toc-item anim-slide-right delay-5" onclick="goToSlide(9)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">08</span><span class="text-[#c8d0dc] text-xs">Conclusion</span></div></div>
+      <div class="toc-item anim-slide-left delay-6" onclick="goToSlide(10)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">09</span><span class="text-[#c8d0dc] text-xs">Future Scope</span></div></div>
+      <div class="toc-item anim-slide-right delay-6" onclick="goToSlide(11)"><div class="flex items-center gap-3"><span class="neon-heading text-xs font-semibold w-5">10</span><span class="text-[#c8d0dc] text-xs">References</span></div></div>
+    </div>
+
+    <div class="anim-fade-up delay-7 glass-card p-5 max-w-3xl mt-6">
+      <p class="neon-heading text-[10px] font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+        <iconify-icon icon="mdi:star-four-points" width="14"></iconify-icon> Key Takeaways
+      </p>
+      <div class="flex flex-wrap gap-2.5">
+        <span class="neon-badge bg-[rgba(0,255,170,0.06)] text-[#00FFAA] border-[rgba(0,255,170,0.2)]">
+          <iconify-icon icon="mdi:currency-inr" width="13"></iconify-icon> Affordable (&lt; ₹3,000)
+        </span>
+        <span class="neon-badge bg-[rgba(0,191,255,0.06)] text-[#00BFFF] border-[rgba(0,191,255,0.2)]">
+          <iconify-icon icon="mdi:rotate-360" width="13"></iconify-icon> 360° Coverage + Env. Monitoring
+        </span>
+        <span class="neon-badge bg-[rgba(0,255,170,0.06)] text-[#00FFAA] border-[rgba(0,255,170,0.2)]">
+          <iconify-icon icon="mdi:web" width="13"></iconify-icon> Web-based Control from Anywhere
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 3: INTRODUCTION ==================== -->
+<div class="slide" data-slide="2">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">01</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-6">Introduction</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div class="lg:col-span-3 space-y-3">
+        <p class="anim-fade-up delay-3 text-[#b0bcd0] text-xs leading-relaxed">
+          Industrial security has evolved from simple CCTV to integrated IoT systems. However, most affordable solutions still lack real-time environmental awareness and dynamic camera movement. This project bridges that gap using the <span class="text-[#00FFAA] font-medium">XIAO ESP32-S3 Cam</span>, a dual-core processor with <span class="text-[#00BFFF]">8MB PSRAM</span> and <span class="text-[#00BFFF]">2MP camera</span>.
+        </p>
+
+        <p class="anim-fade-up delay-4 text-[#607080] text-[10px] uppercase tracking-wider font-semibold mb-1">We integrated:</p>
+        <div class="space-y-1.5">
+          <div class="anim-slide-left delay-4 flex items-center gap-2.5 text-xs text-[#b0bcd0]">
+            <iconify-icon icon="mdi:motion-sensor" width="15" class="text-[#00FFAA] flex-shrink-0"></iconify-icon>
+            <span><span class="text-[#F0F0F0] font-medium">PIR sensor</span> — human motion detection; swappable with HC-SR04 ultrasonic</span>
+          </div>
+          <div class="anim-slide-left delay-5 flex items-center gap-2.5 text-xs text-[#b0bcd0]">
+            <iconify-icon icon="mdi:thermometer" width="15" class="text-[#ff6b6b] flex-shrink-0"></iconify-icon>
+            <span><span class="text-[#F0F0F0] font-medium">DHT11</span> — temperature (0–50°C) & humidity (20–90% RH)</span>
+          </div>
+          <div class="anim-slide-left delay-5 flex items-center gap-2.5 text-xs text-[#b0bcd0]">
+            <iconify-icon icon="mdi:white-balance-sunny" width="15" class="text-[#ffd43b] flex-shrink-0"></iconify-icon>
+            <span><span class="text-[#F0F0F0] font-medium">LDR</span> — light intensity (analog 0–4095)</span>
+          </div>
+          <div class="anim-slide-left delay-6 flex items-center gap-2.5 text-xs text-[#b0bcd0]">
+            <iconify-icon icon="mdi:water" width="15" class="text-[#00BFFF] flex-shrink-0"></iconify-icon>
+            <span><span class="text-[#F0F0F0] font-medium">Rain sensor</span> — digital output (LOW = wet)</span>
+          </div>
+          <div class="anim-slide-left delay-6 flex items-center gap-2.5 text-xs text-[#b0bcd0]">
+            <iconify-icon icon="mdi:rotate-360" width="15" class="text-[#00FFAA] flex-shrink-0"></iconify-icon>
+            <span><span class="text-[#F0F0F0] font-medium">360° servo</span> — adjustable speed (90=stop, 70–110=slow, 0–180=full)</span>
+          </div>
+        </div>
+
+        <p class="anim-fade-up delay-7 text-[#b0bcd0] text-xs leading-relaxed mt-3">
+          The system hosts <span class="text-[#00FFAA] font-medium">two web servers</span>: Port 80 (REST API + dashboard) and Port 81 (MJPEG stream, ~15 fps, 480×320). Motion alert latency <span class="text-[#00FFAA] font-medium">&lt;0.5 sec</span>.
+        </p>
+      </div>
+
+      <div class="lg:col-span-2 space-y-3">
+        <div class="anim-scale delay-5 glass-card p-5 text-center" style="animation: neonPulse 3s infinite;">
+          <iconify-icon icon="mdi:currency-inr" width="26" class="text-[#00FFAA] mb-1.5"></iconify-icon>
+          <p class="text-3xl font-serif text-[#F0F0F0] mb-0.5">₹3,000</p>
+          <p class="text-[10px] text-[#607080]">Total Project Cost</p>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div class="anim-scale delay-6 glass-card-light p-3.5 text-center">
+            <iconify-icon icon="mdi:timer-alert-outline" width="20" class="text-[#ffd43b] mb-1"></iconify-icon>
+            <p class="text-lg font-semibold text-[#F0F0F0]">&lt;0.5s</p>
+            <p class="text-[9px] text-[#607080]">Alert Response</p>
+          </div>
+          <div class="anim-scale delay-7 glass-card-light p-3.5 text-center">
+            <iconify-icon icon="mdi:rotate-360" width="20" class="text-[#00FFAA] mb-1"></iconify-icon>
+            <p class="text-lg font-semibold text-[#F0F0F0]">360°</p>
+            <p class="text-[9px] text-[#607080]">Camera Panning</p>
+          </div>
+          <div class="anim-scale delay-8 glass-card-light p-3.5 text-center">
+            <iconify-icon icon="mdi:access-point" width="20" class="text-[#00BFFF] mb-1"></iconify-icon>
+            <p class="text-lg font-semibold text-[#F0F0F0]">2 Ports</p>
+            <p class="text-[9px] text-[#607080]">Web + Stream</p>
+          </div>
+          <div class="anim-scale delay-9 glass-card-light p-3.5 text-center">
+            <iconify-icon icon="mdi:chip" width="20" class="text-[#00FFAA] mb-1"></iconify-icon>
+            <p class="text-lg font-semibold text-[#F0F0F0]">8MB</p>
+            <p class="text-[9px] text-[#607080]">PSRAM</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 4: PROBLEM STATEMENT ==================== -->
+<div class="slide" data-slide="3">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">02</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-4">Problem Statement</h2>
+
+    <div class="anim-fade-up delay-3 glass-card p-4 mb-6 border-l-4 border-l-[#ff6b6b] max-w-4xl">
+      <p class="text-[#607080] text-[10px] uppercase tracking-wider font-semibold mb-1.5 flex items-center gap-1.5"><iconify-icon icon="mdi:alert-outline" width="13" class="text-[#ff6b6b]"></iconify-icon>Real-World Scenario</p>
+      <p class="text-[#b0bcd0] text-xs leading-relaxed">
+        A small warehouse stores electronic components. One night, <span class="text-[#ff6b6b]">rain seeps through the roof</span> — but the CCTV shows only the entrance. By the time someone checks, the components are damaged. Another scenario: An intruder enters from a side alley — <span class="text-[#ff6b6b]">fixed cameras miss him entirely</span>.
+      </p>
+    </div>
+
+    <p class="anim-fade-up delay-3 text-[#8090a8] text-xs mb-4">Specific problems:</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 max-w-4xl">
+      <div class="anim-slide-left delay-3 glass-card-light p-4 flex gap-3 items-start">
+        <div class="w-8 h-8 rounded-lg bg-[rgba(255,60,60,0.08)] flex items-center justify-center flex-shrink-0">
+          <iconify-icon icon="mdi:video-off" width="15" class="text-[#ff6b6b]"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Blind Spots</p>
+          <p class="text-[#607080] text-[11px] leading-relaxed">Fixed cameras cover only 60–90°; intruders exploit this.</p>
+        </div>
+      </div>
+      <div class="anim-slide-right delay-4 glass-card-light p-4 flex gap-3 items-start">
+        <div class="w-8 h-8 rounded-lg bg-[rgba(255,212,59,0.08)] flex items-center justify-center flex-shrink-0">
+          <iconify-icon icon="mdi:thermometer-alert" width="15" class="text-[#ffd43b]"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">No Environmental Feedback</p>
+          <p class="text-[#607080] text-[11px] leading-relaxed">Temperature, humidity, rain, light changes go unnoticed.</p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-5 glass-card-light p-4 flex gap-3 items-start">
+        <div class="w-8 h-8 rounded-lg bg-[rgba(0,191,255,0.08)] flex items-center justify-center flex-shrink-0">
+          <iconify-icon icon="mdi:cursor-default-click-off" width="15" class="text-[#00BFFF]"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">No Remote Intervention</p>
+          <p class="text-[#607080] text-[11px] leading-relaxed">Cannot rotate camera or sound alarm from your phone.</p>
+        </div>
+      </div>
+      <div class="anim-slide-right delay-6 glass-card-light p-4 flex gap-3 items-start">
+        <div class="w-8 h-8 rounded-lg bg-[rgba(0,255,170,0.08)] flex items-center justify-center flex-shrink-0">
+          <iconify-icon icon="mdi:cash-remove" width="15" class="text-[#00FFAA]"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">High PTZ Cost</p>
+          <p class="text-[#607080] text-[11px] leading-relaxed">Professional Pan-Tilt-Zoom cameras cost ₹15,000+.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-7 glass-card p-5 max-w-4xl border-l-4 border-l-[#00FFAA]">
+      <p class="text-[#00FFAA] text-[10px] font-semibold uppercase tracking-wider mb-1">Our Solution</p>
+      <p class="text-[#F0F0F0] text-sm leading-relaxed">
+        A single ESP32 board that does <span class="neon-heading">everything</span> — video + panning + sensors + alerts — for <span class="neon-heading font-semibold">under ₹3,000</span>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 5: OBJECTIVES ==================== -->
+<div class="slide" data-slide="4">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">03</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-8">Objectives <span class="text-[#607080] text-base font-light">(Quantified)</span></h2>
+
+    <div class="space-y-3.5 max-w-3xl">
+      <div class="anim-slide-left delay-2 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(0,255,170,0.08)] border border-[rgba(0,255,170,0.2)] flex items-center justify-center neon-heading text-xs font-bold group-hover:bg-[rgba(0,255,170,0.15)] transition-all">1</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Cost Target</p>
+          <p class="text-[#607080] text-xs leading-relaxed">Total hardware cost <span class="text-[#00FFAA]">≤ ₹3,000</span></p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-3 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(0,255,170,0.08)] border border-[rgba(0,255,170,0.2)] flex items-center justify-center neon-heading text-xs font-bold group-hover:bg-[rgba(0,255,170,0.15)] transition-all">2</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Coverage</p>
+          <p class="text-[#607080] text-xs leading-relaxed"><span class="text-[#00FFAA]">360°</span> continuous rotation, zero blind spots</p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-4 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(0,191,255,0.08)] border border-[rgba(0,191,255,0.2)] flex items-center justify-center cyan-heading text-xs font-bold group-hover:bg-[rgba(0,191,255,0.15)] transition-all">3</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Sensor Accuracy</p>
+          <p class="text-[#607080] text-xs leading-relaxed">Temperature <span class="text-[#00BFFF]">±1°C</span>, humidity <span class="text-[#00BFFF]">±5%</span>, light intensity <span class="text-[#00BFFF]">0–4095</span></p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-5 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(255,60,60,0.08)] border border-[rgba(255,60,60,0.2)] flex items-center justify-center text-[#ff6b6b] text-xs font-bold group-hover:bg-[rgba(255,60,60,0.15)] transition-all">4</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Response Time</p>
+          <p class="text-[#607080] text-xs leading-relaxed">Motion → buzzer / LED / web alert within <span class="text-[#ff6b6b]">0.5 seconds</span></p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-6 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(0,191,255,0.08)] border border-[rgba(0,191,255,0.2)] flex items-center justify-center cyan-heading text-xs font-bold group-hover:bg-[rgba(0,191,255,0.15)] transition-all">5</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Remote Access</p>
+          <p class="text-[#607080] text-xs leading-relaxed">Dashboard accessible on <span class="text-[#00BFFF]">any browser</span> — no app installation needed</p>
+        </div>
+      </div>
+      <div class="anim-slide-left delay-7 flex items-start gap-4 group">
+        <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-[rgba(0,255,170,0.08)] border border-[rgba(0,255,170,0.2)] flex items-center justify-center neon-heading text-xs font-bold group-hover:bg-[rgba(0,255,170,0.15)] transition-all">6</div>
+        <div>
+          <p class="text-[#F0F0F0] text-xs font-semibold mb-0.5">Expandability</p>
+          <p class="text-[#607080] text-xs leading-relaxed">Code modular; new sensors via additional <span class="text-[#00FFAA]">GPIO or I2C</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 6: LITERATURE REVIEW ==================== -->
+<div class="slide" data-slide="5">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">04</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-6">Literature Review</h2>
+
+    <div class="anim-fade-up delay-3 glass-card p-4 mb-5 overflow-x-auto">
+      <table class="data-table min-w-[520px]">
+        <thead><tr><th>System</th><th>Video</th><th>Panning</th><th>Env. Sensors</th><th>Remote Ctrl</th><th>Cost (₹)</th></tr></thead>
+        <tbody>
+          <tr><td class="text-[#F0F0F0] font-medium">Traditional CCTV</td><td class="text-[#00FFAA]">✓</td><td class="text-[#ff6b6b]">✗</td><td class="text-[#ff6b6b]">✗</td><td class="text-[#ff6b6b]">✗</td><td>&gt;10,000</td></tr>
+          <tr><td class="text-[#F0F0F0] font-medium">Raspberry Pi + Cam</td><td class="text-[#00FFAA]">✓</td><td class="text-[#ffd43b]">~</td><td class="text-[#ffd43b]">~</td><td class="text-[#00FFAA]">✓</td><td>&gt;5,000</td></tr>
+          <tr><td class="text-[#F0F0F0] font-medium">Basic ESP32-CAM</td><td class="text-[#00FFAA]">✓</td><td class="text-[#ff6b6b]">✗</td><td class="text-[#ff6b6b]">✗</td><td class="text-[#ffd43b]">Limited</td><td>~2,000</td></tr>
+          <tr style="background:rgba(0,255,170,0.04)"><td class="neon-heading font-semibold">Our Project</td><td class="neon-heading">✓</td><td class="neon-heading">✓ (360°)</td><td class="neon-heading">✓ (4 types)</td><td class="neon-heading">✓ (full)</td><td class="neon-heading font-semibold">&lt;3,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="anim-slide-left delay-4 glass-card-light p-4">
+        <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider mb-2.5">Gaps in Existing Research</p>
+        <div class="space-y-2">
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:close-circle" width="14" class="text-[#ff6b6b] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed">No integration of <span class="text-[#b0bcd0]">rain sensor</span> with surveillance</p></div>
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:close-circle" width="14" class="text-[#ff6b6b] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed">No <span class="text-[#b0bcd0]">web-based servo speed control</span></p></div>
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:close-circle" width="14" class="text-[#ff6b6b] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed">No <span class="text-[#b0bcd0]">event log with timestamps</span></p></div>
+        </div>
+      </div>
+      <div class="anim-slide-right delay-5 glass-card-light p-4">
+        <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider mb-2.5">Our Contribution</p>
+        <div class="space-y-2">
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:check-circle" width="14" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed">First (to our knowledge) to combine <span class="text-[#00FFAA]">all features in sub-₹3,000</span></p></div>
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:check-circle" width="14" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed"><span class="text-[#00FFAA]">Continuous rotation servo</span> for uninterrupted panning</p></div>
+          <div class="flex items-start gap-2"><iconify-icon icon="mdi:check-circle" width="14" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon><p class="text-[#8090a8] text-[11px] leading-relaxed">Proper <span class="text-[#00FFAA]">web dashboard</span> with speed control + event log</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 7: PROPOSED SYSTEM ==================== -->
+<div class="slide" data-slide="6">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">05</p>
+    <h2 class="anim-fade-up delay-2 text-2xl md:text-3xl text-white tracking-[-0.02em] mb-5">Proposed System / Methodology</h2>
+
+    <div class="anim-fade-up delay-3 glass-card p-4 mb-4">
+      <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider mb-3">Hardware Block Diagram</p>
+      <div class="relative">
+        <div class="flex justify-center mb-4">
+          <div class="block-node central"><iconify-icon icon="mdi:chip" width="16" class="mr-1 inline-block align-middle"></iconify-icon>ESP32-S3 Cam</div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-3">
+          <div class="block-node"><iconify-icon icon="mdi:camera" width="13" class="text-[#00BFFF] inline mr-1 align-middle"></iconify-icon>OV2640</div>
+          <div class="block-node"><iconify-icon icon="mdi:rotate-360" width="13" class="text-[#00FFAA] inline mr-1 align-middle"></iconify-icon>Servo (GPIO5)</div>
+          <div class="block-node"><iconify-icon icon="mdi:thermometer" width="13" class="text-[#ff6b6b] inline mr-1 align-middle"></iconify-icon>DHT11 (GPIO1)</div>
+          <div class="block-node"><iconify-icon icon="mdi:white-balance-sunny" width="13" class="text-[#ffd43b] inline mr-1 align-middle"></iconify-icon>LDR (GPIO2)</div>
+          <div class="block-node"><iconify-icon icon="mdi:water" width="13" class="text-[#00BFFF] inline mr-1 align-middle"></iconify-icon>Rain (GPIO3)</div>
+          <div class="block-node"><iconify-icon icon="mdi:motion-sensor" width="13" class="text-[#00FFAA] inline mr-1 align-middle"></iconify-icon>PIR (GPIO4)</div>
+          <div class="block-node"><iconify-icon icon="mdi:alarm-bell" width="13" class="text-[#ffd43b] inline mr-1 align-middle"></iconify-icon>Buzzer (GPIO6)</div>
+          <div class="block-node"><iconify-icon icon="mdi:led-on" width="13" class="text-[#ff6b6b] inline mr-1 align-middle"></iconify-icon>LEDs (7,8)</div>
+        </div>
+        <div class="flex justify-center my-2"><iconify-icon icon="mdi:arrow-down" width="18" class="text-[rgba(0,255,170,0.3)]"></iconify-icon></div>
+        <div class="flex justify-center mb-2"><div class="block-node" style="border-color:rgba(0,191,255,0.3)"><iconify-icon icon="mdi:wifi" width="14" class="text-[#00BFFF] inline mr-1 align-middle"></iconify-icon>Wi-Fi Router</div></div>
+        <div class="flex justify-center mb-1"><iconify-icon icon="mdi:arrow-down" width="18" class="text-[rgba(0,255,170,0.3)]"></iconify-icon></div>
+        <div class="flex justify-center gap-3">
+          <div class="block-node" style="border-color:rgba(0,191,255,0.25)"><iconify-icon icon="mdi:laptop" width="15" class="text-[#00BFFF] inline mr-1 align-middle"></iconify-icon>Laptop</div>
+          <div class="block-node" style="border-color:rgba(0,191,255,0.25)"><iconify-icon icon="mdi:cellphone" width="15" class="text-[#00BFFF] inline mr-1 align-middle"></iconify-icon>Mobile</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+      <div class="anim-slide-left delay-4 glass-card-light p-3.5">
+        <p class="text-[#00BFFF] text-[9px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1"><iconify-icon icon="mdi:video-wireless" width="12"></iconify-icon>Video Channel</p>
+        <div class="flex flex-wrap items-center gap-1 text-[9px] text-[#8090a8]">
+          <span class="step-pill">Camera</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">JPEG Enc</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">:81</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill text-[#00BFFF]">&lt;img&gt;</span>
+        </div>
+      </div>
+      <div class="anim-fade-up delay-5 glass-card-light p-3.5">
+        <p class="text-[#00FFAA] text-[9px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1"><iconify-icon icon="mdi:access-point" width="12"></iconify-icon>Sensor Channel</p>
+        <div class="flex flex-wrap items-center gap-1 text-[9px] text-[#8090a8]">
+          <span class="step-pill">Sensors</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">2s Loop</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">/api</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill text-[#00FFAA]">Cards</span>
+        </div>
+      </div>
+      <div class="anim-slide-right delay-6 glass-card-light p-3.5">
+        <p class="text-[#ffd43b] text-[9px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1"><iconify-icon icon="mdi:gamepad-variant" width="12"></iconify-icon>Control Channel</p>
+        <div class="flex flex-wrap items-center gap-1 text-[9px] text-[#8090a8]">
+          <span class="step-pill">Click</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">HTTP GET</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill">API</span><iconify-icon icon="mdi:chevron-right" width="10" class="text-[#405060]"></iconify-icon>
+          <span class="step-pill text-[#ffd43b]">Action</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-7 glass-card-light p-3.5">
+      <p class="text-[#F0F0F0] text-[9px] font-semibold uppercase tracking-wider mb-2.5 flex items-center gap-1"><iconify-icon icon="mdi:state-machine" width="12" class="text-[#00FFAA]"></iconify-icon>State Machine</p>
+      <div class="flex flex-wrap items-center gap-2 text-[9px]">
+        <span class="px-2.5 py-1 rounded-full bg-[rgba(0,255,170,0.08)] text-[#00FFAA] border border-[rgba(0,255,170,0.2)] font-medium">Idle (auto-pan)</span>
+        <iconify-icon icon="mdi:arrow-right" width="12" class="text-[#405060]"></iconify-icon>
+        <span class="px-2.5 py-1 rounded-full bg-[rgba(255,60,60,0.08)] text-[#ff6b6b] border border-[rgba(255,60,60,0.2)] font-medium">Motion (5s alert)</span>
+        <iconify-icon icon="mdi:arrow-right" width="12" class="text-[#405060]"></iconify-icon>
+        <span class="px-2.5 py-1 rounded-full bg-[rgba(0,191,255,0.08)] text-[#00BFFF] border border-[rgba(0,191,255,0.2)] font-medium">Manual Override</span>
+        <iconify-icon icon="mdi:arrow-right" width="12" class="text-[#405060]"></iconify-icon>
+        <span class="px-2.5 py-1 rounded-full bg-[rgba(0,255,170,0.08)] text-[#00FFAA] border border-[rgba(0,255,170,0.2)] font-medium">Auto-resume (10s)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 8: SYSTEM REQUIREMENTS ==================== -->
+<div class="slide" data-slide="7">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">06</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-6">System Requirements</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="anim-slide-left delay-3 glass-card p-4">
+        <div class="flex items-center gap-2 mb-3">
+          <iconify-icon icon="mdi:memory" width="16" class="text-[#00FFAA]"></iconify-icon>
+          <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider">Hardware Components</p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead><tr><th>Component</th><th>Qty</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td class="text-[#F0F0F0] font-medium">XIAO ESP32-S3 Cam</td><td>1</td><td>Controller, Camera, Web Server</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">DHT11</td><td>1</td><td>Temp & Humidity</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">LDR</td><td>1</td><td>Light Intensity</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">Rain Sensor</td><td>1</td><td>Rain Detection</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">PIR (HC-SR501)</td><td>1</td><td>Motion Detection</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">360° Servo</td><td>1</td><td>Camera Panning</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">Buzzer + LEDs</td><td>3</td><td>Alert Indicators</td></tr>
+              <tr><td class="text-[#F0F0F0] font-medium">5V / 2A Supply</td><td>1</td><td>Power</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="anim-slide-right delay-4 space-y-4">
+        <div class="glass-card p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <iconify-icon icon="mdi:flash" width="16" class="text-[#ffd43b]"></iconify-icon>
+            <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider">Power Budget</p>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table">
+              <thead><tr><th>Component</th><th>Current (mA)</th></tr></thead>
+              <tbody>
+                <tr><td class="text-[#F0F0F0]">ESP32-S3 Cam (active)</td><td>~180</td></tr>
+                <tr><td class="text-[#F0F0F0]">Servo (idle / rotating)</td><td>~10 / ~250</td></tr>
+                <tr><td class="text-[#F0F0F0]">DHT11 / PIR</td><td>~2 / ~1</td></tr>
+                <tr><td class="text-[#F0F0F0]">Buzzer / LEDs</td><td>~30 / ~10 ea.</td></tr>
+                <tr style="background:rgba(0,255,170,0.04)"><td class="neon-heading font-semibold">Total Peak</td><td class="neon-heading font-semibold">~500 mA</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="glass-card-light p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <iconify-icon icon="mdi:code-braces" width="16" class="text-[#00BFFF]"></iconify-icon>
+            <p class="text-[#F0F0F0] text-[10px] font-semibold uppercase tracking-wider">Software & Tools</p>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-xs text-[#b0bcd0]"><iconify-icon icon="mdi:console" width="14" class="text-[#00BFFF]"></iconify-icon>Arduino IDE 2.x</div>
+            <div class="flex items-center gap-2 text-xs text-[#b0bcd0]"><iconify-icon icon="mdi:library" width="14" class="text-[#ffd43b]"></iconify-icon>esp_camera, ESP32Servo, DHT.h</div>
+            <div class="flex items-center gap-2 text-xs text-[#b0bcd0]"><iconify-icon icon="mdi:cog" width="14" class="text-[#00FFAA]"></iconify-icon>OPI PSRAM, USB CDC, Huge App</div>
+            <div class="flex items-center gap-2 text-xs text-[#b0bcd0]"><iconify-icon icon="mdi:web" width="14" class="text-[#00BFFF]"></iconify-icon>Chrome / Firefox / Edge</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 9: IMPLEMENTATION & RESULTS ==================== -->
+<div class="slide" data-slide="8">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">07</p>
+    <h2 class="anim-fade-up delay-2 text-2xl md:text-3xl text-white tracking-[-0.02em] mb-4">Implementation & Results</h2>
+
+    <div class="anim-fade-up delay-3 glass-card-light p-4 mb-4">
+      <p class="text-[#F0F0F0] text-[9px] font-semibold uppercase tracking-wider mb-2.5">Implementation Phases</p>
+      <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+        <div class="text-center p-2 rounded-lg bg-[rgba(0,255,170,0.03)] border border-[rgba(0,255,170,0.06)]">
+          <p class="neon-heading text-[10px] font-semibold">Week 1</p>
+          <p class="text-[#607080] text-[9px]">Wiring & sensor tests</p>
+        </div>
+        <div class="text-center p-2 rounded-lg bg-[rgba(0,191,255,0.03)] border border-[rgba(0,191,255,0.06)]">
+          <p class="cyan-heading text-[10px] font-semibold">Week 2</p>
+          <p class="text-[#607080] text-[9px]">Camera init (PSRAM fix)</p>
+        </div>
+        <div class="text-center p-2 rounded-lg bg-[rgba(0,255,170,0.03)] border border-[rgba(0,255,170,0.06)]">
+          <p class="neon-heading text-[10px] font-semibold">Week 3</p>
+          <p class="text-[#607080] text-[9px]">Web dashboard + APIs</p>
+        </div>
+        <div class="text-center p-2 rounded-lg bg-[rgba(0,191,255,0.03)] border border-[rgba(0,191,255,0.06)]">
+          <p class="cyan-heading text-[10px] font-semibold">Week 4</p>
+          <p class="text-[#607080] text-[9px]">Servo pan + speed ctrl</p>
+        </div>
+        <div class="text-center p-2 rounded-lg bg-[rgba(0,255,170,0.03)] border border-[rgba(0,255,170,0.06)]">
+          <p class="neon-heading text-[10px] font-semibold">Week 5</p>
+          <p class="text-[#607080] text-[9px]">Integration (12hr test)</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="anim-scale delay-4 glass-card p-3.5 mb-4">
+      <div class="flex items-center gap-2 mb-2.5">
+        <div class="w-2 h-2 rounded-full bg-[#ff3c3c]"></div>
+        <div class="w-2 h-2 rounded-full bg-[#ffd43b]"></div>
+        <div class="w-2 h-2 rounded-full bg-[#00FFAA]"></div>
+        <span class="text-[#405060] text-[9px] ml-1 font-mono">192.168.1.100 — ESP32 Surveillance Dashboard</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+        <div class="md:col-span-2">
+          <div class="mock-video aspect-video flex items-center justify-center">
+            <div class="rec-dot"></div>
+            <div class="cam-label">CAM-01 • LIVE • 480×320</div>
+            <div class="text-center"><iconify-icon icon="mdi:video-wireless-outline" width="36" class="text-[#1a2436] mb-1.5"></iconify-icon><p class="text-[#2a3545] text-[10px]">MJPEG Live Stream</p><p class="text-[#1a2436] text-[9px] mt-0.5">~12-15 fps • 180-220ms latency</p></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-1 gap-2">
+          <div class="sensor-card"><iconify-icon icon="mdi:thermometer" width="16" class="text-[#ff6b6b] mb-0.5"></iconify-icon><p class="text-[#F0F0F0] text-base font-semibold">32°C</p><p class="text-[#607080] text-[9px]">Temperature</p></div>
+          <div class="sensor-card"><iconify-icon icon="mdi:water-percent" width="16" class="text-[#00BFFF] mb-0.5"></iconify-icon><p class="text-[#F0F0F0] text-base font-semibold">65%</p><p class="text-[#607080] text-[9px]">Humidity</p></div>
+          <div class="sensor-card"><iconify-icon icon="mdi:white-balance-sunny" width="16" class="text-[#ffd43b] mb-0.5"></iconify-icon><p class="text-[#F0F0F0] text-base font-semibold">742</p><p class="text-[#607080] text-[9px]">Light (LDR)</p></div>
+          <div class="sensor-card"><iconify-icon icon="mdi:water-off" width="16" class="text-[#00FFAA] mb-0.5"></iconify-icon><p class="text-[#F0F0F0] text-base font-semibold">DRY</p><p class="text-[#607080] text-[9px]">Rain Sensor</p></div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2.5">
+        <div class="sensor-card alert-active"><iconify-icon icon="mdi:motion-sensor" width="18" class="text-[#ff6b6b] mb-0.5"></iconify-icon><p class="text-[#ff6b6b] text-xs font-semibold animate-pulse">MOTION!</p><p class="text-[#607080] text-[9px]">PIR Triggered</p></div>
+        <div class="sensor-card"><p class="text-[#607080] text-[9px] mb-1.5">Pan Control</p><div class="flex gap-1.5 justify-center"><button class="px-2.5 py-1 rounded-md bg-[rgba(0,255,170,0.05)] border border-[rgba(0,255,170,0.1)] text-[#00FFAA] text-[9px]">◀ LEFT</button><button class="px-2.5 py-1 rounded-md bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] text-[#8090a8] text-[9px]">■ STOP</button><button class="px-2.5 py-1 rounded-md bg-[rgba(0,255,170,0.05)] border border-[rgba(0,255,170,0.1)] text-[#00FFAA] text-[9px]">RIGHT ▶</button></div></div>
+        <div class="sensor-card"><p class="text-[#607080] text-[9px] mb-1">Speed: <span class="text-[#F0F0F0]">95</span></p><div class="w-full h-1 bg-[#141c2b] rounded-full overflow-hidden mb-1.5"><div class="h-full w-[53%] bg-gradient-to-r from-[#00FFAA] to-[#00BFFF] rounded-full"></div></div><div class="flex justify-center gap-1"><button class="px-1.5 py-0.5 rounded text-[8px] bg-[rgba(255,60,60,0.08)] border border-[rgba(255,60,60,0.15)] text-[#ff6b6b]">LED</button><button class="px-1.5 py-0.5 rounded text-[8px] bg-[rgba(255,212,59,0.08)] border border-[rgba(255,212,59,0.15)] text-[#ffd43b]">BUZZ</button><button class="px-1.5 py-0.5 rounded text-[8px] bg-[rgba(0,255,170,0.08)] border border-[rgba(0,255,170,0.15)] text-[#00FFAA]">AUTO</button></div></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="anim-fade-up delay-6 glass-card-light p-3.5 overflow-x-auto">
+        <p class="text-[#F0F0F0] text-[9px] font-semibold uppercase tracking-wider mb-2">Performance Metrics</p>
+        <table class="data-table">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Video Resolution</td><td class="text-[#F0F0F0]">480×320</td></tr>
+            <tr><td>Frame Rate</td><td class="text-[#F0F0F0]">12–15 fps</td></tr>
+            <tr><td>Stream Latency</td><td class="text-[#F0F0F0]">180–220 ms</td></tr>
+            <tr><td>Motion Delay</td><td class="neon-heading font-medium">0.4–0.5 s</td></tr>
+            <tr><td>Wi-Fi (indoor)</td><td class="text-[#F0F0F0]">~25 m</td></tr>
+            <tr><td>Max Clients</td><td class="text-[#F0F0F0]">3 (tested)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="anim-fade-up delay-7 glass-card-light p-3.5 overflow-x-auto">
+        <p class="text-[#F0F0F0] text-[9px] font-semibold uppercase tracking-wider mb-2">Test Results Summary</p>
+        <div class="space-y-1.5 text-[11px]">
+          <div class="flex items-start gap-2 text-[#b0bcd0]"><iconify-icon icon="mdi:check" width="13" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>PIR: ~110° angle, ~5m range</div>
+          <div class="flex items-start gap-2 text-[#b0bcd0]"><iconify-icon icon="mdi:check" width="13" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>Rain: triggered instantly with drops</div>
+          <div class="flex items-start gap-2 text-[#b0bcd0]"><iconify-icon icon="mdi:check" width="13" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>LDR: 380 (dark) – 3850 (bright)</div>
+          <div class="flex items-start gap-2 text-[#b0bcd0]"><iconify-icon icon="mdi:check" width="13" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>DHT11: ±0.5°C vs reference</div>
+          <div class="flex items-start gap-2 text-[#b0bcd0]"><iconify-icon icon="mdi:check" width="13" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>Stress test: 12 hours, no crash</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 10: CONCLUSION ==================== -->
+<div class="slide" data-slide="9">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">08</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-4">Conclusion</h2>
+
+    <p class="anim-fade-up delay-3 text-[#b0bcd0] text-xs leading-relaxed mb-6 max-w-3xl">
+      The project successfully demonstrates that an <span class="text-[#00FFAA] font-medium">industrial-grade surveillance system</span> can be built for less than ₹3,000. It eliminates blind spots through 360° panning, provides real-time environmental data, and allows full remote control via a web browser.
+    </p>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-6">
+      <div class="anim-scale delay-3 glass-card p-3.5 text-center hover:border-[rgba(0,255,170,0.3)] transition-all" style="animation: float 4s ease-in-out infinite;">
+        <iconify-icon icon="mdi:eye-check" width="22" class="text-[#00FFAA] mb-1.5"></iconify-icon>
+        <p class="text-[#F0F0F0] text-[11px] font-medium">Zero Blind Spots</p>
+      </div>
+      <div class="anim-scale delay-4 glass-card p-3.5 text-center hover:border-[rgba(0,255,170,0.3)] transition-all" style="animation: float 4s ease-in-out infinite 0.5s;">
+        <iconify-icon icon="mdi:alarm-light" width="22" class="text-[#ff6b6b] mb-1.5"></iconify-icon>
+        <p class="text-[#F0F0F0] text-[11px] font-medium">Instant Alerts</p>
+      </div>
+      <div class="anim-scale delay-5 glass-card p-3.5 text-center hover:border-[rgba(0,255,170,0.3)] transition-all" style="animation: float 4s ease-in-out infinite 1s;">
+        <iconify-icon icon="mdi:cash-off" width="22" class="text-[#00BFFF] mb-1.5"></iconify-icon>
+        <p class="text-[#F0F0F0] text-[11px] font-medium">No Recurring Cost</p>
+      </div>
+      <div class="anim-scale delay-6 glass-card p-3.5 text-center hover:border-[rgba(0,255,170,0.3)] transition-all" style="animation: float 4s ease-in-out infinite 1.5s;">
+        <iconify-icon icon="mdi:rocket-launch" width="22" class="text-[#ffd43b] mb-1.5"></iconify-icon>
+        <p class="text-[#F0F0F0] text-[11px] font-medium">Easy Deploy</p>
+      </div>
+      <div class="anim-scale delay-7 glass-card p-3.5 text-center hover:border-[rgba(0,255,170,0.3)] transition-all" style="animation: float 4s ease-in-out infinite 2s;">
+        <iconify-icon icon="mdi:puzzle" width="22" class="text-[#00FFAA] mb-1.5"></iconify-icon>
+        <p class="text-[#F0F0F0] text-[11px] font-medium">Expandable</p>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-8 glass-card p-4 max-w-3xl">
+      <p class="neon-heading text-[10px] font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5"><iconify-icon icon="mdi:earth" width="13"></iconify-icon>Potential Impact</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="flex items-start gap-2">
+          <iconify-icon icon="mdi:factory" width="16" class="text-[#00BFFF] mt-0.5 flex-shrink-0"></iconify-icon>
+          <p class="text-[#b0bcd0] text-[11px] leading-relaxed">Small industries can now <span class="text-[#F0F0F0]">afford smart surveillance</span></p>
+        </div>
+        <div class="flex items-start gap-2">
+          <iconify-icon icon="mdi:sprout" width="16" class="text-[#00FFAA] mt-0.5 flex-shrink-0"></iconify-icon>
+          <p class="text-[#b0bcd0] text-[11px] leading-relaxed">Farmers can <span class="text-[#F0F0F0]">monitor livestock & weather</span></p>
+        </div>
+        <div class="flex items-start gap-2">
+          <iconify-icon icon="mdi:warehouse" width="16" class="text-[#ffd43b] mt-0.5 flex-shrink-0"></iconify-icon>
+          <p class="text-[#b0bcd0] text-[11px] leading-relaxed">Warehouses prevent <span class="text-[#F0F0F0]">theft & env. damage</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 11: FUTURE SCOPE ==================== -->
+<div class="slide" data-slide="10">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">09</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-6">Future Scope</h2>
+
+    <div class="anim-fade-up delay-3 glass-card p-4 mb-5 overflow-x-auto">
+      <table class="data-table min-w-[480px]">
+        <thead><tr><th>Feature</th><th>Difficulty</th><th>Benefit</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">Ultrasonic (HC-SR04)</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(0,255,170,0.1)] text-[#00FFAA] text-[10px] font-medium">Easy</span></td>
+            <td>Detects objects regardless of heat</td>
+          </tr>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">Mobile App (Flutter)</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(0,191,255,0.1)] text-[#00BFFF] text-[10px] font-medium">Medium</span></td>
+            <td>Push notifications, better UX</td>
+          </tr>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">Cloud Logging (Firebase)</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(0,191,255,0.1)] text-[#00BFFF] text-[10px] font-medium">Medium</span></td>
+            <td>Historical data, remote access</td>
+          </tr>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">AI Detection (TF Lite)</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(255,60,60,0.1)] text-[#ff6b6b] text-[10px] font-medium">Hard</span></td>
+            <td>Human vs animal, reduce false alarms</td>
+          </tr>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">Solar + Battery</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(0,191,255,0.1)] text-[#00BFFF] text-[10px] font-medium">Medium</span></td>
+            <td>Off-grid for farms</td>
+          </tr>
+          <tr>
+            <td class="text-[#F0F0F0] font-medium">Multi-Camera Mesh</td>
+            <td><span class="px-2 py-0.5 rounded-full bg-[rgba(255,60,60,0.1)] text-[#ff6b6b] text-[10px] font-medium">Hard</span></td>
+            <td>Cover large areas, one dashboard</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="anim-fade-up delay-5 glass-card p-4 border-l-4 border-l-[#00FFAA] max-w-3xl">
+      <p class="text-[#00FFAA] text-[10px] font-semibold uppercase tracking-wider mb-1">Next Step</p>
+      <p class="text-[#F0F0F0] text-xs leading-relaxed">
+        We plan to implement <span class="neon-heading font-semibold">ultrasonic integration</span> next as it directly matches the project title and requires only a code change.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 12: REFERENCES ==================== -->
+<div class="slide" data-slide="11">
+  <div class="slide-inner px-6 md:px-16 lg:px-24 pb-20">
+    <p class="anim-fade-up delay-1 text-[10px] font-semibold tracking-[0.2em] uppercase neon-heading mb-2">10</p>
+    <h2 class="anim-fade-up delay-2 text-3xl md:text-4xl text-white tracking-[-0.02em] mb-6">References</h2>
+
+    <div class="max-w-3xl space-y-0">
+      <div class="anim-fade-up delay-2 ref-item"><span class="ref-num">[1]</span>Espressif Systems, "ESP32 Technical Reference Manual," 2023. <span class="text-[#405060]">espressif.com</span></div>
+      <div class="anim-fade-up delay-2 ref-item"><span class="ref-num">[2]</span>A. Banks and R. Gupta, "MQTT Version 3.1.1," OASIS Standard, 2014.</div>
+      <div class="anim-fade-up delay-3 ref-item"><span class="ref-num">[3]</span>S. Madakam, R. Ramaswamy, S. Tripathi, "Internet of Things (IoT): A Literature Review," J. Computer & Communications, vol. 3, no. 5, pp. 164–173, 2015.</div>
+      <div class="anim-fade-up delay-3 ref-item"><span class="ref-num">[4]</span>A. Krizhevsky, I. Sutskever, G. Hinton, "ImageNet Classification with Deep CNNs," NeurIPS, 2012.</div>
+      <div class="anim-fade-up delay-4 ref-item"><span class="ref-num">[5]</span>Adafruit Industries, "DHT Sensor Library Documentation," 2022. <span class="text-[#405060]">github.com/adafruit/DHT-sensor-library</span></div>
+      <div class="anim-fade-up delay-4 ref-item"><span class="ref-num">[6]</span>Espressif Systems, "ESP32 Camera Web Server Example," GitHub, 2023.</div>
+      <div class="anim-fade-up delay-5 ref-item"><span class="ref-num">[7]</span>H. C. Srivastava et al., "IoT-Based Smart Surveillance Using ESP32-CAM," IJERT, 2021.</div>
+      <div class="anim-fade-up delay-5 ref-item"><span class="ref-num">[8]</span>SparkFun Electronics, "HC-SR04 Ultrasonic Sensor Datasheet," 2018.</div>
+      <div class="anim-fade-up delay-6 ref-item"><span class="ref-num">[9]</span>M. Collotta, G. Pau, "Novel Energy Management for Smart Homes Using IoT," IEEE Sensors J., 2015.</div>
+      <div class="anim-fade-up delay-6 ref-item"><span class="ref-num">[10]</span>Madhephaestus, "ESP32 Servo Library," GitHub, 2022.</div>
+      <div class="anim-fade-up delay-7 ref-item"><span class="ref-num">[11]</span>Seeed Studio, "XIAO ESP32-S3 Sense Pinout," 2024.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SLIDE 13: THANK YOU ==================== -->
+<div class="slide" data-slide="12">
+  <div class="corner-accent tl"></div>
+  <div class="corner-accent tr"></div>
+  <div class="corner-accent bl"></div>
+  <div class="corner-accent br"></div>
+
+  <div class="slide-inner px-6 md:px-16 text-center relative">
+    <div class="anim-scale delay-1 mb-6">
+      <div class="inline-flex items-center justify-center w-24 h-24 rounded-full border-2 border-[rgba(0,255,170,0.2)] bg-[rgba(0,255,170,0.03)]" style="animation: neonPulse 3s infinite;">
+        <iconify-icon icon="mdi:check-bold" width="40" style="color:#00FFAA"></iconify-icon>
+      </div>
+    </div>
+
+    <h2 class="anim-fade-up delay-2 text-5xl md:text-7xl text-white tracking-[-0.03em] mb-2">Thank You</h2>
+    <p class="anim-fade-up delay-3 text-lg text-[#607080] font-light mb-8">for your attention!</p>
+
+    <div class="anim-fade-up delay-4 glass-card inline-block px-7 py-5 mb-6 text-left" style="animation: borderGlow 4s ease-in-out infinite;">
+      <div class="flex items-center gap-3 mb-3.5">
+        <div class="w-10 h-10 rounded-full bg-[rgba(0,255,170,0.08)] flex items-center justify-center border border-[rgba(0,255,170,0.15)]">
+          <iconify-icon icon="mdi:account" width="20" style="color:#00FFAA"></iconify-icon>
+        </div>
+        <div>
+          <p class="text-[#F0F0F0] text-sm font-medium">Soham Prabhakar Kadu</p>
+          <p class="text-[#607080] text-xs">PRN: 2124UMLM1042</p>
+        </div>
+      </div>
+      <div class="space-y-1.5 text-xs text-[#8090a8]">
+        <div class="flex items-center gap-2"><iconify-icon icon="mdi:email-outline" width="13" class="text-[#405060]"></iconify-icon><span>kadusoham64@gmail.com</span></div>
+        <div class="flex items-center gap-2"><iconify-icon icon="mdi:school-outline" width="13" class="text-[#405060]"></iconify-icon><span>Dept. of AIML, Sanjivani University</span></div>
+        <div class="flex items-center gap-2"><iconify-icon icon="mdi:map-marker-outline" width="13" class="text-[#405060]"></iconify-icon><span>Kopargaon, Maharashtra</span></div>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-5 mb-6">
+      <div class="inline-block p-3 rounded-xl bg-[#0f1520] border border-[rgba(0,255,170,0.08)]">
+        <div class="w-20 h-20 bg-[#0a0e17] rounded-lg flex items-center justify-center border border-[rgba(0,255,170,0.06)]">
+          <iconify-icon icon="mdi:qrcode" width="44" style="color:rgba(0,255,170,0.25)"></iconify-icon>
+        </div>
+        <p class="text-[#405060] text-[9px] mt-1.5 text-center">Scan for project link</p>
+      </div>
+    </div>
+
+    <div class="anim-fade-up delay-6">
+      <p class="text-[#607080] text-sm mb-2">Any Questions?</p>
+      <div class="flex justify-center gap-1.5">
+        <iconify-icon icon="mdi:chat-question-outline" width="22" style="color:rgba(0,255,170,0.3); animation: float 3s ease-in-out infinite;"></iconify-icon>
+        <iconify-icon icon="mdi:chat-question-outline" width="22" style="color:rgba(0,255,170,0.2); animation: float 3s ease-in-out infinite 0.3s;"></iconify-icon>
+        <iconify-icon icon="mdi:chat-question-outline" width="22" style="color:rgba(0,255,170,0.1); animation: float 3s ease-in-out infinite 0.6s;"></iconify-icon>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== FOOTER NAV ==================== -->
+<div class="footer-bar">
+  <div class="flex items-center gap-2.5">
+    <button class="nav-btn" id="prevBtn" onclick="changeSlide(-1)"><iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon></button>
+    <div class="flex items-center gap-1" id="dotsContainer"></div>
+    <button class="nav-btn" id="nextBtn" onclick="changeSlide(1)"><iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon></button>
+  </div>
+  <div class="text-[11px] text-[rgba(0,255,170,0.3)] font-mono" id="slideCounter">01 / 13</div>
+  <button class="nav-btn" onclick="toggleFullscreen()" title="Fullscreen (F)"><iconify-icon icon="mdi:fullscreen" width="14"></iconify-icon></button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  let currentSlide = 0;
+  let isTransitioning = false;
+
+  const dotsContainer = document.getElementById('dotsContainer');
+  for (let i = 0; i < totalSlides; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', () => goToSlide(i));
+    dotsContainer.appendChild(dot);
+  }
+
+  function goToSlide(index) {
+    if (isTransitioning || index === currentSlide || index < 0 || index >= totalSlides) return;
+    isTransitioning = true;
+    slides[currentSlide].classList.remove('active');
+    currentSlide = index;
+    slides[currentSlide].classList.add('active');
+    updateUI();
+    setTimeout(() => { isTransitioning = false; }, 600);
+  }
+
+  function changeSlide(dir) { goToSlide(currentSlide + dir); }
+
+  function updateUI() {
+    dotsContainer.querySelectorAll('.nav-dot').forEach((d, i) => d.classList.toggle('active', i === currentSlide));
+    document.getElementById('slideCounter').textContent = String(currentSlide + 1).padStart(2, '0') + ' / ' + String(totalSlides).padStart(2, '0');
+    document.getElementById('progressBar').style.width = ((currentSlide + 1) / totalSlides * 100) + '%';
+    document.getElementById('prevBtn').style.opacity = currentSlide === 0 ? '0.2' : '1';
+    document.getElementById('nextBtn').style.opacity = currentSlide === totalSlides - 1 ? '0.2' : '1';
+    document.querySelectorAll('.toc-item').forEach((item, i) => item.classList.toggle('current', i + 2 === currentSlide));
+    slides[currentSlide].scrollTop = 0;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); changeSlide(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); changeSlide(-1); }
+    else if (e.key === 'Home') { e.preventDefault(); goToSlide(0); }
+    else if (e.key === 'End') { e.preventDefault(); goToSlide(totalSlides - 1); }
+    else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  });
+
+  let touchStartX = 0, touchStartY = 0;
+  document.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) changeSlide(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    else document.exitFullscreen().catch(() => {});
+  }
+
+  updateUI();
+</script>
+</body>
+</html>
