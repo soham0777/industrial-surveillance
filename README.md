@@ -1,4 +1,20 @@
+<div align="center">
+
 # 🚀 IoT-Based Industrial Security System
+
+**ESP32-S3 CAM · Real-Time Monitoring · 360° Surveillance**
+
+[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-Open-00b8d4?style=for-the-badge&logo=googlechrome&logoColor=white)](https://soham0777.github.io/industrial-surveillance/)
+![ESP32-S3](https://img.shields.io/badge/ESP32--S3-CAM-E7352C?style=for-the-badge&logo=espressif&logoColor=white)
+![Arduino](https://img.shields.io/badge/Arduino-IDE-00979D?style=for-the-badge&logo=arduino&logoColor=white)
+![Cost](https://img.shields.io/badge/Cost-under_%E2%82%B93000-success?style=for-the-badge)
+
+[📄 Project Report](1%20Project%20Report%20CE.pdf) · [🌐 Live Dashboard](https://soham0777.github.io/industrial-surveillance/) · [💻 Firmware](Project_code.ino)
+
+</div>
+
+---
+
 
 ## 📌 Project Title
 **IoT-Enabled Industrial Security System using ESP32-S3 CAM with Real-Time Monitoring and 360° Surveillance**
